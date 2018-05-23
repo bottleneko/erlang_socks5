@@ -31,16 +31,25 @@ start_link(Address, Port) ->
 %%====================================================================
 
 init([Address, Port]) ->
-  {ok, ListenSocket} = gen_tcp:listen(Port, [binary, {ifaddr, Address}, inet, {active, false}]),
+  {ok, ListenSocket} = gen_tcp:listen(Port, [
+    binary,
+    {ifaddr, Address},
+    {packet, raw},
+    {active, false},
+    {reuseaddr, true}
+  ]),
   gen_server:cast(?MODULE, accept_connection),
-  #state{listen_socket = ListenSocket}.
+  {ok, #state{listen_socket = ListenSocket}}.
 
 handle_cast(accept_connection, State) ->
-  Accepted = gen_tcp:accept(accept_connections, 2000),
+  Accepted = gen_tcp:accept(State#state.listen_socket, 2000),
   case Accepted of
     {ok, Socket} ->
-      {ok, Pid} = supervisor:start_child(socks5_statem, [Socket]),
-      gen_tcp:controlling_process(Socket, Pid);
+      {ok, Pid} = supervisor:start_child(socks5_connections_sup, [Socket]),
+      gen_tcp:controlling_process(Socket, Pid),
+      gen_statem:cast(Pid, socket_delegated),
+      gen_server:cast(?MODULE, accept_connection),
+      {noreply, State};
     {error, closed} ->
       {stop, socket_closed, State};
     {error, timeout} ->
