@@ -17,7 +17,6 @@
 start(_StartType, _StartArgs) ->
   Port = application:get_env(erlang_socks5, proxy_port, 1080),
   {ok, InInterfaceName} = application:get_env(proxy_in_interface),
-  exit(InInterfaceName),
   {ok, OutInterfaceName} = application:get_env(proxy_out_interface),
   InAddr = get_ipv4_addr(InInterfaceName),
   OutAddr = get_ipv4_addr(OutInterfaceName),
