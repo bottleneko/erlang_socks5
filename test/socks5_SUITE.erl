@@ -11,7 +11,7 @@ all() ->
     connection_test,
     multiple_connections_test,
     username_password_auth_test,
-    %% wrong_username_password_auth_test,
+    wrong_username_password_auth_test,
     proxy_test
   ].
 
@@ -54,6 +54,19 @@ username_password_auth_test(_Config) ->
   ?assertEqual(<<1:8, 0:8>>, AuthRespPacket),
   gen_tcp:shutdown(Socket, read_write).
 
+wrong_username_password_auth_test(_Config) ->
+  {ok, Socket} = gen_tcp:connect({127,0,0,1}, 10800, [binary, {packet, raw}, {active, false}]),
+  gen_tcp:send(Socket, <<5:8, 1:8, 2:8>>),
+  {ok, MethodPacket} = gen_tcp:recv(Socket, 2, 2000),
+  ?assertEqual(<<5:8, 2:8>>, MethodPacket),
+  Username = <<"testuser">>,
+  Password = <<"wrongpassword">>,
+  AuthPacket = <<1:8, (byte_size(Username)):8, Username/binary, (byte_size(Password)):8, Password/binary>>,
+  gen_tcp:send(Socket, AuthPacket),
+  {ok, AuthRespPacket} = gen_tcp:recv(Socket, 2, 2000),
+  ?assertEqual(<<1:8, 16#ff:8>>, AuthRespPacket),
+  gen_tcp:shutdown(Socket, read_write).
+
 proxy_test(_Config) ->
   {ok, Socket} = gen_tcp:connect({127,0,0,1}, 10800, [binary, {packet, raw}, {active, false}]),
   gen_tcp:send(Socket, <<5:8, 1:8, 2:8>>),
@@ -74,14 +87,18 @@ proxy_test(_Config) ->
   gen_tcp:send(Socket, <<"echo">>),
   {ok, EchoPacket} = gen_tcp:recv(Socket, byte_size(<<"echo">>), 2000),
   ?assertEqual(<<"echo">>, EchoPacket),
-  gen_tcp:shutdown(Socket, read_write).
+  gen_tcp:shutdown(Socket, read_write),
+  gen_tcp:close(Socket),
+  receive {stop, Server} -> ok after 2000 -> exit(server_not_stopped) end.
+
 
 test_server(Pid) ->
   {ok, ListenSocket} = gen_tcp:listen(10808, [
     binary,
     {ifaddr, loopback},
     {packet, raw},
-    {active, true}
+    {active, true},
+    {reuseaddr, true}
   ]),
   Pid ! {started, self()},
   {ok, Client} = gen_tcp:accept(ListenSocket),
@@ -90,4 +107,7 @@ test_server(Pid) ->
       gen_tcp:send(Client, Data)
   end,
   gen_tcp:shutdown(Client, read_write),
-  gen_tcp:shutdown(ListenSocket, read_write).
+  gen_tcp:shutdown(ListenSocket, read_write),
+  gen_tcp:close(Client),
+  gen_tcp:close(ListenSocket),
+  Pid ! {stop, self()}.

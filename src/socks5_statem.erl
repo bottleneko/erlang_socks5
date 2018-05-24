@@ -63,20 +63,27 @@ wait_auth_methods(_EventType, {tcp, _Socket, _Data}, State) ->
 wait_auth_methods(_EventType, {tcp_closed, Socket}, _State) ->
   io:format("SOCKET ~p CLOSED", [Socket]),
   gen_tcp:shutdown(Socket, read_write),
-  exit.
+  stop.
 
 
 %% rfc 1929
 wait_authentication(_EventType, {tcp, _Socket, Data}, State) ->
   <<1:8, ULen:8, Username:ULen/binary, PLen:8, Password:PLen/binary>> = Data,
-  gen_tcp:send(State#state.socket, <<1:8, 0:8>>),
-  {next_state, wait_socks_request, State#state{
-    username = Username,
-    password = Password
-  }};
+  case authorization_config:is_authorized(Username, Password) of
+    true ->
+      gen_tcp:send(State#state.socket, <<1:8, 0:8>>),
+      {next_state, wait_socks_request, State#state{
+        username = Username,
+        password = Password
+      }};
+    false ->
+      gen_tcp:send(State#state.socket, <<1:8, 16#ff:8>>),
+      gen_tcp:shutdown(State#state.socket, read_write),
+      stop
+  end;
 wait_authentication(_EventType, {tcp_closed, Socket}, _State) ->
   gen_tcp:shutdown(Socket, read_write),
-  exit.
+  stop.
 
 wait_socks_request(_EventType, {tcp, _Socket, Data}, State) ->
   ATyp = binary:at(Data, 3),
@@ -114,7 +121,7 @@ wait_socks_request(_EventType, {tcp, _Socket, Data}, State) ->
   end;
 wait_socks_request(_EventType, {tcp_closed, Socket}, _State) ->
   io:format("SOCKET ~p CLOSED", [Socket]),
-  exit.
+  stop.
 
 data_exchange(_EventType, {tcp, Socket, Data}, State) when Socket =:= State#state.server_socket ->
   gen_tcp:send(State#state.socket, Data),
