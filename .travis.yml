@@ -5,6 +5,6 @@ before_script:
     - "chmod +x bootstrap_travis.sh"
     - "./bootstrap_travis.sh"
 script:
-    - "rm config/config_socks5_test.config"
-    - "mv config/config_socks5_travis.config config/config_socks5_test.config"
+    - "rm ./config/config_socks5_test.config"
+    - "mv ./config/config_socks5_travis.config ./config/config_socks5_test.config"
     - "./rebar3 ct"
