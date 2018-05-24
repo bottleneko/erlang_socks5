@@ -1,1 +1,4 @@
-[].
+[{<<"sqlite3">>,
+  {git,"https://github.com/alexeyr/erlang-sqlite3.git",
+       {ref,"7cf50f858975f9d493fdef2202c706240531caa1"}},
+  0}].

@@ -4,7 +4,7 @@
 -include_lib("kernel/include/inet.hrl").
 
 %% API
--export([start_link/1]).
+-export([start_link/2]).
 
 %% gen_statem callbacks
 -export([
@@ -29,6 +29,7 @@
 -record(state, {
   socket,
   server_socket,
+  if_addr,
   username,
   password
 }).
@@ -37,15 +38,15 @@
 %%% API
 %%%===================================================================
 
-start_link(Socket) ->
-  gen_statem:start_link(?MODULE, [Socket], []).
+start_link(Addr, Socket) ->
+  gen_statem:start_link(?MODULE, [Addr, Socket], []).
 
 %%%===================================================================
 %%% gen_statem callbacks
 %%%===================================================================
 
-init([Socket]) ->
-  {ok, wait_for_socket_control, #state{ socket = Socket }}.
+init([Addr, Socket]) ->
+  {ok, wait_for_socket_control, #state{ socket = Socket, if_addr = Addr }}.
 
 format_status(_Opt, [_PDict, StateName, _State]) ->
   Status = StateName,
@@ -74,7 +75,6 @@ wait_authentication(_EventType, {tcp, _Socket, Data}, State) ->
     password = Password
   }};
 wait_authentication(_EventType, {tcp_closed, Socket}, _State) ->
-  io:format("SOCKET ~p CLOSED", [Socket]),
   gen_tcp:shutdown(Socket, read_write),
   exit.
 
@@ -99,7 +99,7 @@ wait_socks_request(_EventType, {tcp, _Socket, Data}, State) ->
   %% TODO: other results
   ConnectResult = gen_tcp:connect(DstAddr, Port,
     [ binary, {active, true},
-      {ifaddr , {192, 168, 0, 6}},
+      {ifaddr , State#state.if_addr},
       {packet, raw} ],
     2000),
   case ConnectResult of
@@ -114,7 +114,6 @@ wait_socks_request(_EventType, {tcp, _Socket, Data}, State) ->
   end;
 wait_socks_request(_EventType, {tcp_closed, Socket}, _State) ->
   io:format("SOCKET ~p CLOSED", [Socket]),
-  gen_tcp:shutdown(Socket, read_write),
   exit.
 
 data_exchange(_EventType, {tcp, Socket, Data}, State) when Socket =:= State#state.server_socket ->
