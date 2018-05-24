@@ -4,4 +4,4 @@ otp_release:
 before_script:
     - "chmod +x bootstrap_travis.sh"
     - "./bootstrap_travis.sh"
-script: "./rebar3 ct"
+script: "./rebar3 as travis ct"
