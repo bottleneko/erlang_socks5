@@ -46,6 +46,7 @@ start_link(Addr, Socket) ->
 %%%===================================================================
 
 init([Addr, Socket]) ->
+  process_flag(trap_exit, true),
   {ok, wait_for_socket_control, #state{ socket = Socket, if_addr = Addr }}.
 
 format_status(_Opt, [_PDict, StateName, _State]) ->
@@ -62,7 +63,6 @@ wait_auth_methods(_EventType, {tcp, _Socket, _Data}, State) ->
   {next_state, wait_authentication, State};
 wait_auth_methods(_EventType, {tcp_closed, Socket}, _State) ->
   io:format("SOCKET ~p CLOSED", [Socket]),
-  gen_tcp:shutdown(Socket, read_write),
   stop.
 
 
@@ -78,14 +78,12 @@ wait_authentication(_EventType, {tcp, _Socket, Data}, State) ->
       }};
     false ->
       gen_tcp:send(State#state.socket, <<1:8, 16#ff:8>>),
-      gen_tcp:shutdown(State#state.socket, read_write),
       stop
   end;
-wait_authentication(_EventType, {tcp_closed, Socket}, _State) ->
-  gen_tcp:shutdown(Socket, read_write),
+wait_authentication(_EventType, {tcp_closed, _Socket}, _State) ->
   stop.
 
-wait_socks_request(_EventType, {tcp, _Socket, Data}, State) ->
+wait_socks_request(_EventType, {tcp, Socket, Data}, State) ->
   ATyp = binary:at(Data, 3),
   case ATyp of
     1 ->
@@ -97,8 +95,7 @@ wait_socks_request(_EventType, {tcp, _Socket, Data}, State) ->
         case inet:gethostbyname(binary_to_list(Dom)) of
           {ok, Hostent} ->
             hd(Hostent#hostent.h_addr_list)
-        end,
-      DstAddrBin = inet4_octets(DstAddr);
+        end;
     4 ->
       <<_Ver:8, _Cmd:8, 0:8, _ATyp:8, DstAddrBin:16/binary, Port:16>> = Data,
       DstAddr = list_to_tuple([ X || <<X>> <= DstAddrBin ])
@@ -111,16 +108,18 @@ wait_socks_request(_EventType, {tcp, _Socket, Data}, State) ->
     2000),
   case ConnectResult of
     {ok, ServerSocket} ->
-      {ok, {ServerAddr, ServerPort}} = inet:sockname(ServerSocket),
-      gen_tcp:send(State#state.socket, <<5:8, 0:8, 0:8, 1:8, (inet4_octets(ServerAddr)):32, ServerPort:16>>),
+      BoundAddress = inet4_octets(State#state.if_addr),
+      {ok, {_, BoundPort}} = inet:sockname(Socket),
+      gen_tcp:send(State#state.socket, <<5:8, 0:8, 0:8, 1:8, (BoundAddress):32, BoundPort:16>>),
       {next_state, data_exchange, State#state{ server_socket = ServerSocket }};
     {error,eaddrnotavail} ->
+      BoundAddress = inet4_octets(State#state.if_addr),
+      {ok, {_, BoundPort}} = inet:sockname(Socket),
       io:format("EADDRNOTAVAIL ~p~n", [DstAddr]),
-      gen_tcp:send(State#state.socket, <<5:8, 0:8, 0:8, 1:8, DstAddrBin:32, Port:16>>),
+      gen_tcp:send(State#state.socket, <<5:8, 4:8, 0:8, 1:8, (BoundAddress):32, BoundPort:16>>),
       stop
   end;
-wait_socks_request(_EventType, {tcp_closed, Socket}, _State) ->
-  io:format("SOCKET ~p CLOSED", [Socket]),
+wait_socks_request(_EventType, {tcp_closed, _Socket}, _State) ->
   stop.
 
 data_exchange(_EventType, {tcp, Socket, Data}, State) when Socket =:= State#state.server_socket ->
@@ -129,19 +128,18 @@ data_exchange(_EventType, {tcp, Socket, Data}, State) when Socket =:= State#stat
 data_exchange(_EventType, {tcp, Socket, Data}, State) when Socket =:= State#state.socket ->
   gen_tcp:send(State#state.server_socket, Data),
   {keep_state, State};
-%% TODO: do this in terminate
 data_exchange(_EveentType, {tcp_closed, Socket}, State) when Socket =:= State#state.server_socket ->
-  gen_tcp:shutdown(State#state.socket, read_write),
   stop;
 data_exchange(_EveentType, {tcp_closed, Socket}, State) when Socket =:= State#state.socket ->
-  gen_tcp:shutdown(State#state.server_socket, read_write),
   stop.
 
 handle_event(_EventType, _EventContent, _StateName, State) ->
   NextStateName = the_next_state_name,
   {next_state, NextStateName, State}.
 
-terminate(_Reason, _StateName, _State) ->
+terminate(_Reason, _StateName, State) ->
+  gen_tcp:shutdown(State#state.server_socket, read_write),
+  gen_tcp:close(State#state.server_socket),
   ok.
 
 code_change(_OldVsn, StateName, State, _Extra) ->

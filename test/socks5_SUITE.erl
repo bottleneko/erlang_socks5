@@ -139,7 +139,7 @@ make_connect_to_remote_host(Socket, Ipv4, Port) when size(Ipv4) == 4 ->
   gen_tcp:send(Socket, <<5:8, 1:8, 0:8, 1:8, (inet4_octets(Ipv4)):32, Port:16>>),
   {ok, RequestPacket} = gen_tcp:recv(Socket, 10, 2000),
   <<5:8, Rep:8, 0:8, 1:8, DstAddr:32, _:16>> = RequestPacket,
-  ?assertEqual((inet4_octets(Ipv4)), DstAddr),
+  ?assertEqual(inet4_octets({127,0,0,1}), DstAddr),
   case Rep of
     0 ->
       Socket
@@ -148,7 +148,7 @@ make_connect_to_remote_host(Socket, Ipv4, Port) when size(Ipv4) == 4 ->
 test_server(Pid) ->
   {ok, ListenSocket} = gen_tcp:listen(10808, [
     binary,
-    {ifaddr, loopback},
+    {ifaddr, {127,0,0,1}},
     {packet, raw},
     {active, true},
     {reuseaddr, true}
