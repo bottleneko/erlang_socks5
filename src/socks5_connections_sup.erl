@@ -3,7 +3,7 @@
 -behaviour(supervisor).
 
 %% API
--export([start_link/1]).
+-export([start_link/2]).
 
 %% Supervisor callbacks
 -export([init/1]).
@@ -14,22 +14,22 @@
 %%% API functions
 %%%===================================================================
 
--spec(start_link(Addr :: tuple()) ->
+-spec(start_link(InAddr :: tuple(), OutAddr :: tuple()) ->
   {ok, Pid :: pid()} | ignore | {error, Reason :: term()}).
-start_link(Addr) ->
-  supervisor:start_link({local, ?SERVER}, ?MODULE, [{addr, Addr}]).
+start_link(InAddr, OutAddr) ->
+  supervisor:start_link({local, ?SERVER}, ?MODULE, [{in_interface_address, InAddr}, {out_interface_address, OutAddr}]).
 
 %%%===================================================================
 %%% Supervisor callbacks
 %%%===================================================================
 
-init([{addr, Addr}]) ->
+init([{in_interface_address, InAddr}, {out_interface_address, OutAddr}]) ->
   SupFlags = #{
     strategy => simple_one_for_one
   },
   ChildSpecs = [#{
     id => socks5_statem,
-    start => {socks5_statem, start_link, [Addr]},
+    start => {socks5_statem, start_link, [InAddr, OutAddr]},
     restart => temporary,
     shutdown => 2000,
     type => worker,

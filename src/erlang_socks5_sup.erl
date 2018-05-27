@@ -49,7 +49,7 @@ init([{port, Port}, {in_addr, InAddr}, {out_addr, OutAddr}]) ->
     },
     #{
       id => socks5_connections_sup,
-      start => {socks5_connections_sup, start_link, [OutAddr]},
+      start => {socks5_connections_sup, start_link, [InAddr, OutAddr]},
       restart => transient,
       shutdown => 2000,
       type => supervisor,

@@ -4,7 +4,7 @@
 -include_lib("kernel/include/inet.hrl").
 
 %% API
--export([start_link/2]).
+-export([start_link/3]).
 
 %% gen_statem callbacks
 -export([
@@ -21,7 +21,8 @@
   wait_auth_methods/3,
   wait_authentication/3,
   wait_socks_request/3,
-  data_exchange/3
+  connect_data_exchange/3,
+  udp_associate_data_exchange/3
 ]).
 
 -define(SERVER, ?MODULE).
@@ -29,27 +30,45 @@
 -define(VER, 5).
 
 -record(state, {
+  %% required
   socket,
-  server_socket,
-  if_addr,
+  in_interface_address,
+  out_interface_address,
   username,
-  password
+  password,
+  %% depends by client cmd
+  cmd,
+  % connect
+  host_tcp_socket,
+  % udp associate
+  client_tcp_socket,
+  client_udp_socket,
+  host_udp_socket,
+  client_ip,
+  client_port,
+  host_ip,
+  host_port
 }).
 
 %%%===================================================================
 %%% API
 %%%===================================================================
 
-start_link(Addr, Socket) ->
-  gen_statem:start_link(?MODULE, [Addr, Socket], []).
+start_link(InAddr, OutAddr, Socket) ->
+  gen_statem:start_link(?MODULE, [InAddr, OutAddr, Socket], []).
 
 %%%===================================================================
 %%% gen_statem callbacks
 %%%===================================================================
 
-init([Addr, Socket]) ->
+init([InAddr, OutAddr, Socket]) ->
   process_flag(trap_exit, true),
-  {ok, wait_for_socket_control, #state{ socket = Socket, if_addr = Addr }}.
+  {ok, wait_for_socket_control,
+    #state{
+      socket = Socket,
+      in_interface_address = InAddr,
+      out_interface_address = OutAddr
+  }}.
 
 format_status(_Opt, [_PDict, StateName, _State]) ->
   Status = StateName,
@@ -63,10 +82,8 @@ wait_for_socket_control(_EventType, socket_delegated, State) ->
 wait_auth_methods(_EventType, {tcp, _Socket, _Data}, State) ->
   gen_tcp:send(State#state.socket, <<5:8, 2:8>>),
   {next_state, wait_authentication, State};
-wait_auth_methods(_EventType, {tcp_closed, Socket}, _State) ->
-  io:format("SOCKET ~p CLOSED", [Socket]),
+wait_auth_methods(_EventType, {tcp_closed, _Socket}, _State) ->
   stop.
-
 
 %% rfc 1929
 wait_authentication(_EventType, {tcp, _Socket, Data}, State) ->
@@ -92,24 +109,36 @@ wait_socks_request(_EventType, {tcp, _Socket, Data}, State) ->
 wait_socks_request(_EventType, {tcp_closed, _Socket}, _State) ->
   stop.
 
-data_exchange(_EventType, {tcp, Socket, Data}, State) when Socket =:= State#state.server_socket ->
+connect_data_exchange(_EventType, {tcp, Socket, Data}, State) when Socket =:= State#state.host_tcp_socket ->
   gen_tcp:send(State#state.socket, Data),
   {keep_state, State};
-data_exchange(_EventType, {tcp, Socket, Data}, State) when Socket =:= State#state.socket ->
-  gen_tcp:send(State#state.server_socket, Data),
+connect_data_exchange(_EventType, {tcp, Socket, Data}, State) when Socket =:= State#state.socket ->
+  gen_tcp:send(State#state.host_tcp_socket, Data),
   {keep_state, State};
-data_exchange(_EveentType, {tcp_closed, Socket}, State) when Socket =:= State#state.server_socket ->
+connect_data_exchange(_EventType, {tcp_closed, Socket}, State) when Socket =:= State#state.host_tcp_socket ->
   stop;
-data_exchange(_EveentType, {tcp_closed, Socket}, State) when Socket =:= State#state.socket ->
+connect_data_exchange(_EventType, {tcp_closed, Socket}, State) when Socket =:= State#state.socket ->
   stop.
+
+udp_associate_data_exchange(_EventType, {tcp_closed, Socket}, State) when Socket =:= State#state.client_tcp_socket ->
+  stop;
+udp_associate_data_exchange(_EventType, {udp, Socket, Address, Port, Data}, State) when
+  Socket =:= State#state.client_udp_socket,
+  Address =:= State#state.client_ip,
+  Port =:= State#state.client_port ->
+  gen_udp:send(State#state.client_udp_socket, State#state.host_ip, State#state.host_port, Data),
+  {keep_state, State};
+udp_associate_data_exchange(_EventType, {udp, _Socket, Address, Port, _Data}, State) ->
+  error_logger:warning_msg("Illegitimate dgram from: ~p on: ~p~n", [Address, Port]),
+  {keep_state, State}.
 
 handle_event(_EventType, _EventContent, _StateName, State) ->
   NextStateName = the_next_state_name,
   {next_state, NextStateName, State}.
 
 terminate(_Reason, _StateName, State) ->
-  gen_tcp:shutdown(State#state.server_socket, read_write),
-  gen_tcp:close(State#state.server_socket),
+  gen_tcp:shutdown(State#state.host_tcp_socket, read_write),
+  gen_tcp:close(State#state.host_tcp_socket),
   ok.
 
 code_change(_OldVsn, StateName, State, _Extra) ->
@@ -156,36 +185,50 @@ get_cmd(Request) ->
 request_command_processing(connect, HostAddress, HostPort, State) ->
   ConnectResult = gen_tcp:connect(HostAddress, HostPort,
     [ binary, {active, true},
-      {ifaddr , State#state.if_addr},
+      {ifaddr , State#state.in_interface_address},
       {packet, raw} ],
     2000),
   case ConnectResult of
     {ok, ServerSocket} ->
-      BoundAddress = inet4_octets(State#state.if_addr),
+      BoundAddress = inet4_octets(State#state.in_interface_address),
       {ok, {_, BoundPort}} = inet:sockname(State#state.socket),
       gen_tcp:send(State#state.socket, <<5:8, 0:8, 0:8, 1:8, (BoundAddress):32, BoundPort:16>>),
-      {next_state, data_exchange, State#state{ server_socket = ServerSocket }};
+      {next_state, connect_data_exchange, State#state{ host_tcp_socket = ServerSocket }};
     {error,eaddrnotavail} ->
-      BoundAddress = inet4_octets(State#state.if_addr),
+      BoundAddress = inet4_octets(State#state.in_interface_address),
       {ok, {_, BoundPort}} = inet:sockname(State#state.socket),
-      io:format("EADDRNOTAVAIL ~p~n", [HostAddress]),
+      error_logger:info_msg("eaddrnotavail: ~p~n", [HostAddress]),
       gen_tcp:send(State#state.socket, <<5:8, 4:8, 0:8, 1:8, (BoundAddress):32, BoundPort:16>>),
       stop
   end;
 %% TODO: make support
 request_command_processing(bind, _HostAddress, _HostPort, State) ->
-  BoundAddress = inet4_octets(State#state.if_addr),
-  {ok, {_, BoundPort}} = inet:sockname(State#state.socket),
-  gen_tcp:send(State#state.socket, <<5:8, 7:8, 0:8, 1:8, (BoundAddress):32, BoundPort:16>>);
+  BoundAddress = inet4_octets(State#state.in_interface_address),
+  {ok, {BoundAddress, BoundPort}} = inet:sockname(State#state.socket),
+  gen_tcp:send(State#state.socket, <<5:8, 7:8, 0:8, 1:8, (BoundAddress):32, BoundPort:16>>),
+  stop;
 %% TODO: make support
-request_command_processing(udp_associate, _HostAddress, _HostPort, State) ->
-  BoundAddress = inet4_octets(State#state.if_addr),
-  {ok, {_, BoundPort}} = inet:sockname(State#state.socket),
-  gen_tcp:send(State#state.socket, <<5:8, 7:8, 0:8, 1:8, (BoundAddress):32, BoundPort:16>>);
+request_command_processing(udp_associate, HostAddress, HostPort, State) ->
+  {udp_client, ClientUdpSocket} = gen_udp:open(0, [binary, {active, true}, {ifaddr, State#state.in_interface_address}]),
+  {udp_host, HostUdpSocket} = gen_udp:open(0, [binary, {active, true}, {ifaddr, State#state.out_interface_address}]),
+  BoundAddress = inet4_octets(State#state.in_interface_address),
+  {ok, {ClientAddress, _}} = inet:sockname(State#state.socket),
+  {ok, {BoundAddress, BoundPort}} = inet:sockname(ClientUdpSocket),
+  gen_tcp:send(State#state.socket, <<5:8, 7:8, 0:8, 1:8, (BoundAddress):32, BoundPort:16>>),
+  {next_state, udp_associate_data_exchange,
+    State#state{
+      client_udp_socket = ClientUdpSocket,
+      host_udp_socket = HostUdpSocket,
+      client_ip = ClientAddress,
+      client_port = BoundPort,
+      host_ip = HostAddress,
+      host_port = HostPort
+  }};
 request_command_processing(unsupported, _HostAddress, _HostPort, State) ->
-  BoundAddress = inet4_octets(State#state.if_addr),
-  {ok, {_, BoundPort}} = inet:sockname(State#state.socket),
-  gen_tcp:send(State#state.socket, <<5:8, 7:8, 0:8, 1:8, (BoundAddress):32, BoundPort:16>>).
+  BoundAddress = inet4_octets(State#state.in_interface_address),
+  {ok, {BoundAddress, BoundPort}} = inet:sockname(State#state.socket),
+  gen_tcp:send(State#state.socket, <<5:8, 7:8, 0:8, 1:8, (BoundAddress):32, BoundPort:16>>),
+  stop.
 
 inet4_octets({Oct1, Oct2, Oct3, Oct4}) ->
   B1 = Oct1 bsl 24,
