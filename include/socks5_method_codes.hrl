@@ -1,0 +1,37 @@
+-ifndef(SOCKS5_METHOD_CODES).
+-define(SOCKS5_METHOD_CODES, true).
+
+-define(PROTOCOL_VERSION, 5).
+
+-define(QUERY_IPv4, 1).
+-define(QUERY_FQDN, 3).
+-define(QUERY_IPv6, 4).
+
+-define(CONNECT_CMD, 1).
+-define(BIND_CMD, 2).
+-define(UDP_ASSOC_CMD, 3).
+
+-define(RESERVED, 0).
+
+-define(SUCCESS_CONNECT, 0).
+-define(PROXY_SERVER_INTERNAL_ERROR, 1).
+-define(CONNECTION_REJECTED_BY_RULESET, 2).
+-define(NETWORK_NOT_AVAIL, 3).
+-define(HOST_NOT_AVAIL, 4).
+-define(CONNECTION_REFUSED, 5).
+-define(TTL_LIMIT, 6).
+-define(COMMAND_NOT_AVAIL, 7).
+-define(ADDRESS_TYPE_NOT_AVAIL, 8).
+
+
+-define(NO_AUTH, 0).
+-define(GSS_API_AUTH, 1).
+
+-define(USERNAME_PASSWORD_AUTH, 2).
+-define(USERNAME_PASSWORD_AUTH_VERSION, 1).
+-define(USERNAME_PASSWORD_AUTH_SUCCESS, 0).
+-define(USERNAME_PASSWORD_AUTH_FAIL, 16#FF).
+
+
+
+-endif.

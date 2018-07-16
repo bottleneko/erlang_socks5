@@ -3,6 +3,8 @@
 
 -include_lib("kernel/include/inet.hrl").
 
+-include("socks5_method_codes.hrl").
+
 %% API
 -export([start_link/3]).
 
@@ -26,8 +28,6 @@
 ]).
 
 -define(SERVER, ?MODULE).
-
--define(VER, 5).
 
 -record(state, {
   %% required
@@ -80,23 +80,23 @@ wait_for_socket_control(_EventType, socket_delegated, State) ->
 
 %% rfc 1928
 wait_auth_methods(_EventType, {tcp, _Socket, _Data}, State) ->
-  gen_tcp:send(State#state.socket, <<5:8, 2:8>>),
+  gen_tcp:send(State#state.socket, [<<?PROTOCOL_VERSION>>, <<?USERNAME_PASSWORD_AUTH>>]),
   {next_state, wait_authentication, State};
 wait_auth_methods(_EventType, {tcp_closed, _Socket}, _State) ->
   stop.
 
 %% rfc 1929
 wait_authentication(_EventType, {tcp, _Socket, Data}, State) ->
-  <<1:8, ULen:8, Username:ULen/binary, PLen:8, Password:PLen/binary>> = Data,
+  <<1, ULen, Username:ULen/binary, PLen, Password:PLen/binary>> = Data,
   case authorization_config:is_authorized(Username, Password) of
     true ->
-      gen_tcp:send(State#state.socket, <<1:8, 0:8>>),
+      gen_tcp:send(State#state.socket, <<?USERNAME_PASSWORD_AUTH_VERSION, ?USERNAME_PASSWORD_AUTH_SUCCESS>>),
       {next_state, wait_socks_request, State#state{
         username = Username,
         password = Password
       }};
     false ->
-      gen_tcp:send(State#state.socket, <<1:8, 16#ff:8>>),
+      gen_tcp:send(State#state.socket, <<?USERNAME_PASSWORD_AUTH_VERSION, ?USERNAME_PASSWORD_AUTH_FAIL>>),
       stop
   end;
 wait_authentication(_EventType, {tcp_closed, _Socket}, _State) ->
@@ -154,29 +154,29 @@ callback_mode() ->
 get_destination_endpoint(Request) ->
   ATyp = binary:at(Request, 3),
   case ATyp of
-    1 ->
-      <<?VER:8, _Cmd:8, 0:8, ATyp:8, DstAddrBin:4/binary, Port:16>> = Request,
+    ?QUERY_IPv4 ->
+      <<?PROTOCOL_VERSION, _Cmd, ?RESERVED, ATyp, DstAddrBin:4/binary, Port:16>> = Request,
       DstAddr = list_to_tuple([ X || <<X>> <= DstAddrBin ]);
-    3 ->
-      <<?VER:8, _Cmd:8, 0:8, ATyp:8, DLen:8, Dom:DLen/binary, Port:16>> = Request,
+    ?QUERY_FQDN ->
+      <<?PROTOCOL_VERSION, _Cmd, ?RESERVED, ATyp, DLen, Dom:DLen/binary, Port:16>> = Request,
       DstAddr =
         case inet:gethostbyname(binary_to_list(Dom)) of
           {ok, Hostent} ->
             hd(Hostent#hostent.h_addr_list)
         end;
-    4 ->
-      <<?VER:8, _Cmd:8, 0:8, ATyp:8, DstAddrBin:16/binary, Port:16>> = Request,
+    ?QUERY_IPv6 ->
+      <<?PROTOCOL_VERSION, _Cmd, ?RESERVED, ATyp, DstAddrBin:16/binary, Port:16>> = Request,
       DstAddr = list_to_tuple([ X || <<X>> <= DstAddrBin ])
   end,
   {DstAddr, Port}.
 
 get_cmd(Request) ->
   case binary:at(Request, 1) of
-    1 ->
+    ?CONNECT_CMD ->
       connect;
-    2 ->
+    ?BIND_CMD ->
       bind;
-    3 ->
+    ?UDP_ASSOC_CMD ->
       udp_associate;
     _ ->
       unsupported
@@ -192,20 +192,23 @@ request_command_processing(connect, HostAddress, HostPort, State) ->
     {ok, ServerSocket} ->
       BoundAddress = inet4_octets(State#state.in_interface_address),
       {ok, {_, BoundPort}} = inet:sockname(State#state.socket),
-      gen_tcp:send(State#state.socket, <<5:8, 0:8, 0:8, 1:8, (BoundAddress):32, BoundPort:16>>),
+      gen_tcp:send(State#state.socket,
+        <<?PROTOCOL_VERSION, ?SUCCESS_CONNECT, ?RESERVED, ?QUERY_IPv4, BoundAddress:32, BoundPort:16>>),
       {next_state, connect_data_exchange, State#state{ host_tcp_socket = ServerSocket }};
     {error,eaddrnotavail} ->
       BoundAddress = inet4_octets(State#state.in_interface_address),
       {ok, {_, BoundPort}} = inet:sockname(State#state.socket),
       error_logger:info_msg("eaddrnotavail: ~p~n", [HostAddress]),
-      gen_tcp:send(State#state.socket, <<5:8, 4:8, 0:8, 1:8, (BoundAddress):32, BoundPort:16>>),
+      gen_tcp:send(State#state.socket,
+        <<?PROTOCOL_VERSION, ?HOST_NOT_AVAIL, ?RESERVED, ?QUERY_IPv4, (BoundAddress):32, BoundPort:16>>),
       stop
   end;
 %% TODO: make support
 request_command_processing(bind, _HostAddress, _HostPort, State) ->
   BoundAddress = inet4_octets(State#state.in_interface_address),
   {ok, {BoundAddress, BoundPort}} = inet:sockname(State#state.socket),
-  gen_tcp:send(State#state.socket, <<5:8, 7:8, 0:8, 1:8, (BoundAddress):32, BoundPort:16>>),
+  gen_tcp:send(State#state.socket,
+    <<?PROTOCOL_VERSION, ?COMMAND_NOT_AVAIL, ?RESERVED, ?QUERY_IPv4, BoundAddress:32, BoundPort:16>>),
   stop;
 %% TODO: make support
 request_command_processing(udp_associate, HostAddress, HostPort, State) ->
@@ -214,7 +217,8 @@ request_command_processing(udp_associate, HostAddress, HostPort, State) ->
   BoundAddress = inet4_octets(State#state.in_interface_address),
   {ok, {ClientAddress, _}} = inet:sockname(State#state.socket),
   {ok, {BoundAddress, BoundPort}} = inet:sockname(ClientUdpSocket),
-  gen_tcp:send(State#state.socket, <<5:8, 7:8, 0:8, 1:8, (BoundAddress):32, BoundPort:16>>),
+  gen_tcp:send(State#state.socket,
+    <<?PROTOCOL_VERSION, ?SUCCESS_CONNECT, ?RESERVED, ?QUERY_IPv4, BoundAddress, BoundPort:16>>),
   {next_state, udp_associate_data_exchange,
     State#state{
       client_udp_socket = ClientUdpSocket,
@@ -227,7 +231,8 @@ request_command_processing(udp_associate, HostAddress, HostPort, State) ->
 request_command_processing(unsupported, _HostAddress, _HostPort, State) ->
   BoundAddress = inet4_octets(State#state.in_interface_address),
   {ok, {BoundAddress, BoundPort}} = inet:sockname(State#state.socket),
-  gen_tcp:send(State#state.socket, <<5:8, 7:8, 0:8, 1:8, (BoundAddress):32, BoundPort:16>>),
+  gen_tcp:send(State#state.socket,
+    <<?PROTOCOL_VERSION, ?COMMAND_NOT_AVAIL, ?RESERVED, ?QUERY_IPv4, BoundAddress:32, BoundPort:16>>),
   stop.
 
 inet4_octets({Oct1, Oct2, Oct3, Oct4}) ->
