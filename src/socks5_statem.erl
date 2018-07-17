@@ -124,8 +124,8 @@ udp_associate_data_exchange(_EventType, {tcp_closed, Socket}, State) when Socket
   stop;
 udp_associate_data_exchange(_EventType, {udp, Socket, Address, Port, Data}, State) when
   Socket =:= State#state.client_udp_socket,
-  Address =:= State#state.client_ip,
-  Port =:= State#state.client_port ->
+  Address =:= State#state.host_ip,
+  Port =:= State#state.host_port ->
   gen_udp:send(State#state.client_udp_socket, State#state.host_ip, State#state.host_port, Data),
   {keep_state, State};
 udp_associate_data_exchange(_EventType, {udp, _Socket, Address, Port, _Data}, State) ->
@@ -212,13 +212,14 @@ request_command_processing(bind, _HostAddress, _HostPort, State) ->
   stop;
 %% TODO: make support
 request_command_processing(udp_associate, HostAddress, HostPort, State) ->
-  {udp_client, ClientUdpSocket} = gen_udp:open(0, [binary, {active, true}, {ifaddr, State#state.in_interface_address}]),
-  {udp_host, HostUdpSocket} = gen_udp:open(0, [binary, {active, true}, {ifaddr, State#state.out_interface_address}]),
+  {ok, ClientUdpSocket} = gen_udp:open(0, [binary, {active, true}, {ifaddr, State#state.in_interface_address}]),
+  {ok, HostUdpSocket} = gen_udp:open(0, [binary, {active, true}, {ifaddr, State#state.out_interface_address}]),
+  BoundAddressTuple = State#state.in_interface_address,
   BoundAddress = inet4_octets(State#state.in_interface_address),
   {ok, {ClientAddress, _}} = inet:sockname(State#state.socket),
-  {ok, {BoundAddress, BoundPort}} = inet:sockname(ClientUdpSocket),
+  {ok, {BoundAddressTuple, BoundPort}} = inet:sockname(ClientUdpSocket),
   gen_tcp:send(State#state.socket,
-    <<?PROTOCOL_VERSION, ?SUCCESS_CONNECT, ?RESERVED, ?QUERY_IPv4, BoundAddress, BoundPort:16>>),
+    <<?PROTOCOL_VERSION, ?SUCCESS_CONNECT, ?RESERVED, ?QUERY_IPv4, BoundAddress:32, BoundPort:16>>),
   {next_state, udp_associate_data_exchange,
     State#state{
       client_udp_socket = ClientUdpSocket,
