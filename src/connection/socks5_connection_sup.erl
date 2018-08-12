@@ -1,9 +1,8 @@
-
--module(socks5_connections_sup).
+-module(socks5_connection_sup).
 -behaviour(supervisor).
 
 %% API
--export([start_link/2]).
+-export([start_link/0]).
 
 %% Supervisor callbacks
 -export([init/1]).
@@ -14,22 +13,22 @@
 %%% API functions
 %%%===================================================================
 
--spec(start_link(InAddr :: tuple(), OutAddr :: tuple()) ->
-  {ok, Pid :: pid()} | ignore | {error, Reason :: term()}).
-start_link(InAddr, OutAddr) ->
-  supervisor:start_link({local, ?SERVER}, ?MODULE, [{in_interface_address, InAddr}, {out_interface_address, OutAddr}]).
+-spec start_link() ->
+  {ok, Pid :: pid()} | ignore | {error, Reason :: term()}.
+start_link() ->
+  supervisor:start_link({local, ?SERVER}, ?MODULE, []).
 
 %%%===================================================================
 %%% Supervisor callbacks
 %%%===================================================================
 
-init([{in_interface_address, InAddr}, {out_interface_address, OutAddr}]) ->
+init([]) ->
   SupFlags = #{
     strategy => simple_one_for_one
   },
   ChildSpecs = [#{
     id => socks5_statem,
-    start => {socks5_statem, start_link, [InAddr, OutAddr]},
+    start => {socks5_statem, start_link, []},
     restart => temporary,
     shutdown => 2000,
     type => worker,

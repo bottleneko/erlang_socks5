@@ -3,11 +3,11 @@
 %% @end
 %%%-------------------------------------------------------------------
 
--module(erlang_socks5_sup).
+-module(socks5_sup).
 -behavior(supervisor).
 
 %% API
--export([start_link/3]).
+-export([start_link/0]).
 
 %% Supervisor callbacks
 -export([init/1]).
@@ -18,15 +18,15 @@
 %% API functions
 %%====================================================================
 
-start_link(Port, InAddr, OutAddr) ->
-  supervisor:start_link({local, ?SERVER}, ?MODULE, [{port, Port}, {in_addr, InAddr}, {out_addr, OutAddr}]).
+start_link() ->
+  supervisor:start_link({local, ?SERVER}, ?MODULE, []).
 
 %%====================================================================
 %% Supervisor callbacks
 %%====================================================================
 
 %% Child :: {Id,StartFunc,Restart,Shutdown,Type,Modules}
-init([{port, Port}, {in_addr, InAddr}, {out_addr, OutAddr}]) ->
+init([]) ->
   SupFlags = #{
     strategy => one_for_one
   },
@@ -40,20 +40,20 @@ init([{port, Port}, {in_addr, InAddr}, {out_addr, OutAddr}]) ->
       module => [authorization_config]
     },
     #{
-      id => socks5,
-      start => {socks5, start_link, [InAddr, Port]},
+      id => socks5_listener_sup,
+      start => {socks5_listener_sup, start_link, []},
       restart => transient,
       shutdown => 2000,
       type => worker,
-      module => [socks5, socks5_statem, socks5_connections_sup, authorization_config]
+      module => [socks5_config, socks5_listener, socks5_listener_sup]
     },
     #{
       id => socks5_connections_sup,
-      start => {socks5_connections_sup, start_link, [InAddr, OutAddr]},
+      start => {socks5_connection_sup, start_link, []},
       restart => transient,
       shutdown => 2000,
       type => supervisor,
-      module => [socks5_statem, socks5_connections_sup, authorization_config]
+      module => [socks5_config, socks5_statem, socks5_connections_sup, authorization_config]
     }
   ],
   {ok, {SupFlags, ChildSpecs}}.

@@ -34,7 +34,10 @@ is_authorized(Username, Password) ->
   gen_server:call(?MODULE, {authorized, Username, Password}).
 
 init([]) ->
-  {ok, Accounts} = application:get_env(erlang_socks5, accounts),
+  {ok, Config} = socks5_config:by_interface_name("lo0"),
+  Params = socks5_config:get_config_params(Config),
+  {ok, Accounts} = socks5_config:get_config_authentication_credentials(Params),
+
   Tid = ets:new(accounts, []),
   lists:foreach(
     fun(Elem) ->

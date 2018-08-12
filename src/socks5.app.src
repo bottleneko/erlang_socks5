@@ -1,0 +1,17 @@
+{application, socks5,
+  [{description, "SOCKS5 proxy server written on Erlang"},
+    {vsn, "0.1.0"},
+    {registered, []},
+    {mod, {socks5_app, []}},
+    {applications, [
+      kernel,
+      stdlib,
+      sasl
+    ]},
+    {env,[]},
+    {modules, []},
+
+    {maintainers, []},
+    {licenses, ["MIT"]},
+    {links, []}
+ ]}.
