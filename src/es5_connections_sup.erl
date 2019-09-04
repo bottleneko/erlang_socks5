@@ -1,5 +1,4 @@
-
--module(socks5_connections_sup).
+-module(es5_connections_sup).
 -behaviour(supervisor).
 
 %% API

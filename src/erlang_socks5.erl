@@ -45,7 +45,7 @@ handle_cast(accept_connection, State) ->
   Accepted = gen_tcp:accept(State#state.listen_socket, 2000),
   case Accepted of
     {ok, Socket} ->
-      {ok, Pid} = supervisor:start_child(socks5_connections_sup, [Socket]),
+      {ok, Pid} = supervisor:start_child(es5_connections_sup, [Socket]),
       gen_tcp:controlling_process(Socket, Pid),
       gen_statem:cast(Pid, socket_delegated),
       gen_server:cast(?MODULE, accept_connection),

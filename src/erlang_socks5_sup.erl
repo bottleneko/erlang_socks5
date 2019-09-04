@@ -45,15 +45,15 @@ init([{port, Port}, {in_addr, InAddr}, {out_addr, OutAddr}]) ->
       restart => transient,
       shutdown => 2000,
       type => worker,
-      module => [erlang_socks5, es5_statem, socks5_connections_sup, authorization_config]
+      module => [erlang_socks5, es5_statem, es5_connections_sup, authorization_config]
     },
     #{
-      id => socks5_connections_sup,
-      start => {socks5_connections_sup, start_link, [InAddr, OutAddr]},
+      id => es5_connections_sup,
+      start => {es5_connections_sup, start_link, [InAddr, OutAddr]},
       restart => transient,
       shutdown => 2000,
       type => supervisor,
-      module => [es5_statem, socks5_connections_sup, authorization_config]
+      module => [es5_statem, es5_connections_sup, authorization_config]
     }
   ],
   {ok, {SupFlags, ChildSpecs}}.
