@@ -40,12 +40,12 @@ init([{port, Port}, {in_addr, InAddr}, {out_addr, OutAddr}]) ->
       module => [es5_authorization_config]
     },
     #{
-      id => erlang_socks5,
-      start => {erlang_socks5, start_link, [InAddr, Port]},
+      id => es5_server,
+      start => {es5_server, start_link, [InAddr, Port]},
       restart => transient,
       shutdown => 2000,
       type => worker,
-      module => [erlang_socks5, es5_statem, es5_connections_sup, es5_authorization_config]
+      module => [es5_server, es5_statem, es5_connections_sup, es5_authorization_config]
     },
     #{
       id => es5_connections_sup,
