@@ -1,4 +1,4 @@
--module(socks5_statem).
+-module(es5_statem).
 -behaviour(gen_statem).
 
 -include_lib("kernel/include/inet.hrl").

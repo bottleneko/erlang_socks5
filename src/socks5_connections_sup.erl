@@ -28,12 +28,12 @@ init([{in_interface_address, InAddr}, {out_interface_address, OutAddr}]) ->
     strategy => simple_one_for_one
   },
   ChildSpecs = [#{
-    id => socks5_statem,
-    start => {socks5_statem, start_link, [InAddr, OutAddr]},
+    id => es5_statem,
+    start => {es5_statem, start_link, [InAddr, OutAddr]},
     restart => temporary,
     shutdown => 2000,
     type => worker,
-    modiles => [socks5_statem]
+    modiles => [es5_statem]
   }],
   {ok, {SupFlags, ChildSpecs}}.
 
