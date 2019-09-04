@@ -40,12 +40,12 @@ init([{port, Port}, {in_addr, InAddr}, {out_addr, OutAddr}]) ->
       module => [authorization_config]
     },
     #{
-      id => socks5,
-      start => {socks5, start_link, [InAddr, Port]},
+      id => erlang_socks5,
+      start => {erlang_socks5, start_link, [InAddr, Port]},
       restart => transient,
       shutdown => 2000,
       type => worker,
-      module => [socks5, socks5_statem, socks5_connections_sup, authorization_config]
+      module => [erlang_socks5, socks5_statem, socks5_connections_sup, authorization_config]
     },
     #{
       id => socks5_connections_sup,

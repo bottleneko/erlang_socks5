@@ -1,4 +1,4 @@
--module(socks5).
+-module(erlang_socks5).
 -behaviour(gen_server).
 
 -record(state, {
