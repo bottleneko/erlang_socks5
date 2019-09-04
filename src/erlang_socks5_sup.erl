@@ -32,12 +32,12 @@ init([{port, Port}, {in_addr, InAddr}, {out_addr, OutAddr}]) ->
   },
   ChildSpecs = [
     #{
-      id => authorization_config,
-      start => {authorization_config, start_link, []},
+      id => es5_authorization_config,
+      start => {es5_authorization_config, start_link, []},
       restart => transient,
       shutdown => 2000,
       type => worker,
-      module => [authorization_config]
+      module => [es5_authorization_config]
     },
     #{
       id => erlang_socks5,
@@ -45,7 +45,7 @@ init([{port, Port}, {in_addr, InAddr}, {out_addr, OutAddr}]) ->
       restart => transient,
       shutdown => 2000,
       type => worker,
-      module => [erlang_socks5, es5_statem, es5_connections_sup, authorization_config]
+      module => [erlang_socks5, es5_statem, es5_connections_sup, es5_authorization_config]
     },
     #{
       id => es5_connections_sup,
@@ -53,7 +53,7 @@ init([{port, Port}, {in_addr, InAddr}, {out_addr, OutAddr}]) ->
       restart => transient,
       shutdown => 2000,
       type => supervisor,
-      module => [es5_statem, es5_connections_sup, authorization_config]
+      module => [es5_statem, es5_connections_sup, es5_authorization_config]
     }
   ],
   {ok, {SupFlags, ChildSpecs}}.

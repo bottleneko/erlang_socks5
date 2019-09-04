@@ -1,4 +1,4 @@
--module(authorization_config).
+-module(es5_authorization_config).
 -behaviour(gen_server).
 
 %% API

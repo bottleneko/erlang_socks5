@@ -88,7 +88,7 @@ wait_auth_methods(_EventType, {tcp_closed, _Socket}, _State) ->
 %% rfc 1929
 wait_authentication(_EventType, {tcp, _Socket, Data}, State) ->
   <<1, ULen, Username:ULen/binary, PLen, Password:PLen/binary>> = Data,
-  case authorization_config:is_authorized(Username, Password) of
+  case es5_authorization_config:is_authorized(Username, Password) of
     true ->
       gen_tcp:send(State#state.socket, <<?USERNAME_PASSWORD_AUTH_VERSION, ?USERNAME_PASSWORD_AUTH_SUCCESS>>),
       {next_state, wait_socks_request, State#state{
