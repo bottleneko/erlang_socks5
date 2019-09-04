@@ -1,5 +1,7 @@
 -module(es5_statem).
+
 -behaviour(gen_statem).
+-behaviour(ranch_protocol).
 
 -include_lib("kernel/include/inet.hrl").
 
@@ -19,7 +21,6 @@
 ]).
 
 -export([
-  wait_for_socket_control/3,
   wait_auth_methods/3,
   wait_authentication/3,
   wait_socks_request/3,
@@ -31,6 +32,7 @@
 
 -record(state, {
   %% required
+  transport :: module(),
   socket,
   in_interface_address,
   out_interface_address,
@@ -54,49 +56,51 @@
 %%% API
 %%%===================================================================
 
-start_link(InAddr, OutAddr, Socket) ->
-  gen_statem:start_link(?MODULE, [InAddr, OutAddr, Socket], []).
+start_link(Ref, Transport, Opts) ->
+  {ok, proc_lib:spawn_link(?MODULE, init, [{Ref, Transport, Opts}])}.
 
 %%%===================================================================
 %%% gen_statem callbacks
 %%%===================================================================
 
-init([InAddr, OutAddr, Socket]) ->
+init({Ref, Transport, [InAddr, OutAddr] = _Opts}) ->
   process_flag(trap_exit, true),
-  {ok, wait_for_socket_control,
+
+  {ok, Socket} = ranch:handshake(Ref),
+  Transport:setopts(Socket, [{active, true}]),
+
+  State =
     #state{
-      socket = Socket,
-      in_interface_address = InAddr,
-      out_interface_address = OutAddr
-  }}.
+       transport = Transport,
+       socket = Socket,
+       in_interface_address = InAddr,
+       out_interface_address = OutAddr
+      },
+  gen_statem:enter_loop(?MODULE, [], wait_auth_methods, State, []).
 
 format_status(_Opt, [_PDict, StateName, _State]) ->
   Status = StateName,
   Status.
 
-wait_for_socket_control(_EventType, socket_delegated, State) ->
-  inet:setopts(State#state.socket, [{active, true}]),
-  {next_state, wait_auth_methods, State}.
-
 %% rfc 1928
-wait_auth_methods(_EventType, {tcp, _Socket, _Data}, State) ->
-  gen_tcp:send(State#state.socket, [<<?PROTOCOL_VERSION>>, <<?USERNAME_PASSWORD_AUTH>>]),
+wait_auth_methods(_EventType, {tcp, _Socket, _Data}, #state{transport = Transport} = State) ->
+  Transport:send(State#state.socket, [<<?PROTOCOL_VERSION>>, <<?USERNAME_PASSWORD_AUTH>>]),
   {next_state, wait_authentication, State};
 wait_auth_methods(_EventType, {tcp_closed, _Socket}, _State) ->
   stop.
 
 %% rfc 1929
-wait_authentication(_EventType, {tcp, _Socket, Data}, State) ->
+wait_authentication(_EventType, {tcp, _Socket, Data}, #state{transport = Transport} =  State) ->
   <<1, ULen, Username:ULen/binary, PLen, Password:PLen/binary>> = Data,
   case es5_authorization_config:is_authorized(Username, Password) of
     true ->
-      gen_tcp:send(State#state.socket, <<?USERNAME_PASSWORD_AUTH_VERSION, ?USERNAME_PASSWORD_AUTH_SUCCESS>>),
+      Transport:send(State#state.socket, <<?USERNAME_PASSWORD_AUTH_VERSION, ?USERNAME_PASSWORD_AUTH_SUCCESS>>),
       {next_state, wait_socks_request, State#state{
         username = Username,
         password = Password
       }};
     false ->
-      gen_tcp:send(State#state.socket, <<?USERNAME_PASSWORD_AUTH_VERSION, ?USERNAME_PASSWORD_AUTH_FAIL>>),
+      Transport:send(State#state.socket, <<?USERNAME_PASSWORD_AUTH_VERSION, ?USERNAME_PASSWORD_AUTH_FAIL>>),
       stop
   end;
 wait_authentication(_EventType, {tcp_closed, _Socket}, _State) ->
@@ -109,11 +113,11 @@ wait_socks_request(_EventType, {tcp, _Socket, Data}, State) ->
 wait_socks_request(_EventType, {tcp_closed, _Socket}, _State) ->
   stop.
 
-connect_data_exchange(_EventType, {tcp, Socket, Data}, State) when Socket =:= State#state.host_tcp_socket ->
-  gen_tcp:send(State#state.socket, Data),
+connect_data_exchange(_EventType, {tcp, Socket, Data}, #state{transport = Transport} = State) when Socket =:= State#state.host_tcp_socket ->
+  Transport:send(State#state.socket, Data),
   {keep_state, State};
-connect_data_exchange(_EventType, {tcp, Socket, Data}, State) when Socket =:= State#state.socket ->
-  gen_tcp:send(State#state.host_tcp_socket, Data),
+connect_data_exchange(_EventType, {tcp, Socket, Data}, #state{transport = Transport} = State) when Socket =:= State#state.socket ->
+  Transport:send(State#state.host_tcp_socket, Data),
   {keep_state, State};
 connect_data_exchange(_EventType, {tcp_closed, Socket}, State) when Socket =:= State#state.host_tcp_socket ->
   stop;
@@ -136,9 +140,9 @@ handle_event(_EventType, _EventContent, _StateName, State) ->
   NextStateName = the_next_state_name,
   {next_state, NextStateName, State}.
 
-terminate(_Reason, _StateName, State) ->
-  gen_tcp:shutdown(State#state.host_tcp_socket, read_write),
-  gen_tcp:close(State#state.host_tcp_socket),
+terminate(_Reason, _StateName, #state{transport = Transport} = State) ->
+  Transport:shutdown(State#state.host_tcp_socket, read_write),
+  Transport:close(State#state.host_tcp_socket),
   ok.
 
 code_change(_OldVsn, StateName, State, _Extra) ->
@@ -182,7 +186,7 @@ get_cmd(Request) ->
       unsupported
   end.
 
-request_command_processing(connect, HostAddress, HostPort, State) ->
+request_command_processing(connect, HostAddress, HostPort, #state{transport = Transport} = State) ->
   ConnectResult = gen_tcp:connect(HostAddress, HostPort,
     [ binary, {active, true},
       {ifaddr , State#state.in_interface_address},
@@ -192,33 +196,33 @@ request_command_processing(connect, HostAddress, HostPort, State) ->
     {ok, ServerSocket} ->
       BoundAddress = inet4_octets(State#state.in_interface_address),
       {ok, {_, BoundPort}} = inet:sockname(State#state.socket),
-      gen_tcp:send(State#state.socket,
+      Transport:send(State#state.socket,
         <<?PROTOCOL_VERSION, ?SUCCESS_CONNECT, ?RESERVED, ?QUERY_IPv4, BoundAddress:32, BoundPort:16>>),
       {next_state, connect_data_exchange, State#state{ host_tcp_socket = ServerSocket }};
     {error,eaddrnotavail} ->
       BoundAddress = inet4_octets(State#state.in_interface_address),
       {ok, {_, BoundPort}} = inet:sockname(State#state.socket),
       error_logger:info_msg("eaddrnotavail: ~p~n", [HostAddress]),
-      gen_tcp:send(State#state.socket,
+      Transport:send(State#state.socket,
         <<?PROTOCOL_VERSION, ?HOST_NOT_AVAIL, ?RESERVED, ?QUERY_IPv4, (BoundAddress):32, BoundPort:16>>),
       stop
   end;
 %% TODO: make support
-request_command_processing(bind, _HostAddress, _HostPort, State) ->
+request_command_processing(bind, _HostAddress, _HostPort, #state{transport = Transport} = State) ->
   BoundAddress = inet4_octets(State#state.in_interface_address),
   {ok, {BoundAddress, BoundPort}} = inet:sockname(State#state.socket),
-  gen_tcp:send(State#state.socket,
+  Transport:send(State#state.socket,
     <<?PROTOCOL_VERSION, ?COMMAND_NOT_AVAIL, ?RESERVED, ?QUERY_IPv4, BoundAddress:32, BoundPort:16>>),
   stop;
 %% TODO: make support
-request_command_processing(udp_associate, HostAddress, HostPort, State) ->
+request_command_processing(udp_associate, HostAddress, HostPort, #state{transport = Transport} = State) ->
   {ok, ClientUdpSocket} = gen_udp:open(0, [binary, {active, true}, {ifaddr, State#state.in_interface_address}]),
   {ok, HostUdpSocket} = gen_udp:open(0, [binary, {active, true}, {ifaddr, State#state.out_interface_address}]),
   BoundAddressTuple = State#state.in_interface_address,
   BoundAddress = inet4_octets(State#state.in_interface_address),
   {ok, {ClientAddress, _}} = inet:sockname(State#state.socket),
   {ok, {BoundAddressTuple, BoundPort}} = inet:sockname(ClientUdpSocket),
-  gen_tcp:send(State#state.socket,
+  Transport:send(State#state.socket,
     <<?PROTOCOL_VERSION, ?SUCCESS_CONNECT, ?RESERVED, ?QUERY_IPv4, BoundAddress:32, BoundPort:16>>),
   {next_state, udp_associate_data_exchange,
     State#state{
@@ -229,10 +233,10 @@ request_command_processing(udp_associate, HostAddress, HostPort, State) ->
       host_ip = HostAddress,
       host_port = HostPort
   }};
-request_command_processing(unsupported, _HostAddress, _HostPort, State) ->
+request_command_processing(unsupported, _HostAddress, _HostPort, #state{transport = Transport} = State) ->
   BoundAddress = inet4_octets(State#state.in_interface_address),
   {ok, {BoundAddress, BoundPort}} = inet:sockname(State#state.socket),
-  gen_tcp:send(State#state.socket,
+  Transport:send(State#state.socket,
     <<?PROTOCOL_VERSION, ?COMMAND_NOT_AVAIL, ?RESERVED, ?QUERY_IPv4, BoundAddress:32, BoundPort:16>>),
   stop.
 

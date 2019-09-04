@@ -5,7 +5,8 @@
   {mod, { erlang_socks5_app, []}},
   {applications,
    [kernel,
-    stdlib
+    stdlib,
+    ranch
    ]},
   {env,[]},
   {modules, []},

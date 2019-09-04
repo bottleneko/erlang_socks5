@@ -7,7 +7,7 @@
 -behavior(supervisor).
 
 %% API
--export([start_link/3]).
+-export([start_link/0]).
 
 %% Supervisor callbacks
 -export([init/1]).
@@ -18,15 +18,15 @@
 %% API functions
 %%====================================================================
 
-start_link(Port, InAddr, OutAddr) ->
-  supervisor:start_link({local, ?SERVER}, ?MODULE, [{port, Port}, {in_addr, InAddr}, {out_addr, OutAddr}]).
+start_link() ->
+  supervisor:start_link({local, ?SERVER}, ?MODULE, []).
 
 %%====================================================================
 %% Supervisor callbacks
 %%====================================================================
 
 %% Child :: {Id,StartFunc,Restart,Shutdown,Type,Modules}
-init([{port, Port}, {in_addr, InAddr}, {out_addr, OutAddr}]) ->
+init([]) ->
   SupFlags = #{
     strategy => one_for_one
   },
@@ -38,22 +38,6 @@ init([{port, Port}, {in_addr, InAddr}, {out_addr, OutAddr}]) ->
       shutdown => 2000,
       type => worker,
       module => [es5_authorization_config]
-    },
-    #{
-      id => es5_server,
-      start => {es5_server, start_link, [InAddr, Port]},
-      restart => transient,
-      shutdown => 2000,
-      type => worker,
-      module => [es5_server, es5_statem, es5_connections_sup, es5_authorization_config]
-    },
-    #{
-      id => es5_connections_sup,
-      start => {es5_connections_sup, start_link, [InAddr, OutAddr]},
-      restart => transient,
-      shutdown => 2000,
-      type => supervisor,
-      module => [es5_statem, es5_connections_sup, es5_authorization_config]
     }
   ],
   {ok, {SupFlags, ChildSpecs}}.

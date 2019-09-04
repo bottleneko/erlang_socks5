@@ -20,7 +20,16 @@ start(_StartType, _StartArgs) ->
   {ok, OutInterfaceName} = application:get_env(proxy_out_interface),
   InAddr = get_ipv4_addr(InInterfaceName),
   OutAddr = get_ipv4_addr(OutInterfaceName),
-  erlang_socks5_sup:start_link(Port, InAddr, OutAddr).
+  SocketOpts =
+    [binary,
+     {ifaddr, InAddr},
+     {packet, raw},
+     {active, false},
+     {reuseaddr, true},
+     {port, Port}
+    ],
+  {ok, _} = ranch:start_listener(erlang_socks5, ranch_tcp, #{socket_opts => SocketOpts}, es5_statem, [InAddr, OutAddr]),
+  erlang_socks5_sup:start_link().
 
 %%--------------------------------------------------------------------
 stop(_State) ->
