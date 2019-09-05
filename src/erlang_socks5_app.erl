@@ -24,7 +24,7 @@ start(_StartType, _StartArgs) ->
      {active, false},
      {reuseaddr, true}
     ],
-  {ok, _} = ranch:start_listener(erlang_socks5, ranch_tcp, #{socket_opts => SocketOpts}, es5_statem, [ListenAddress, ClientsAddress]),
+  {ok, _} = ranch:start_listener(erlang_socks5, ranch_tcp, #{socket_opts => SocketOpts}, es5_connection, [ListenAddress, ClientsAddress]),
   erlang_socks5_sup:start_link().
 
 -spec stop(State :: any()) -> ok.
