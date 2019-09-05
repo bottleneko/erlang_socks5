@@ -1,8 +1,3 @@
-%%%-------------------------------------------------------------------
-%% @doc erlang_socks5 top level supervisor.
-%% @end
-%%%-------------------------------------------------------------------
-
 -module(erlang_socks5_sup).
 -behavior(supervisor).
 
@@ -18,6 +13,7 @@
 %% API functions
 %%====================================================================
 
+-spec start_link() -> {ok, pid()}.
 start_link() ->
   supervisor:start_link({local, ?SERVER}, ?MODULE, []).
 
@@ -25,23 +21,20 @@ start_link() ->
 %% Supervisor callbacks
 %%====================================================================
 
-%% Child :: {Id,StartFunc,Restart,Shutdown,Type,Modules}
+-spec init([]) -> {ok, {SupFlags, ChildSpecs}} when
+    SupFlags   :: supervisor :sup_flags(),
+    ChildSpecs :: [ChildSpec],
+    ChildSpec  :: [supervisor:child_spec()].
 init([]) ->
   SupFlags = #{
     strategy => one_for_one
   },
-  ChildSpecs = [
-    #{
-      id => es5_authentication_server,
-      start => {es5_authentication_server, start_link, []},
-      restart => transient,
+  ChildSpec =
+    #{id       => es5_authentication_server,
+      start    => {es5_authentication_server, start_link, []},
+      restart  => transient,
       shutdown => 2000,
-      type => worker,
-      module => [es5_authentication_server]
-    }
-  ],
-  {ok, {SupFlags, ChildSpecs}}.
-
-%%====================================================================
-%% Internal functions
-%%====================================================================
+      type     => worker,
+      module   => [es5_authentication_server]
+     },
+  {ok, {SupFlags, [ChildSpec]}}.
