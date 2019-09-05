@@ -1,10 +1,15 @@
 language: erlang
-otp_release:
-    - 20.2.2
+
+matrix:
+  include:
+    - otp_release: 22.0.5
+    - otp_release: 21.3.8
+    - otp_release: 21.2.7
+
 before_script:
-    - "chmod +x bootstrap_travis.sh"
-    - "./bootstrap_travis.sh"
+  - "chmod +x bootstrap_travis.sh"
+  - "./bootstrap_travis.sh"
 script:
-    - "rm ./config/erlang_socks5_test.config"
-    - "mv ./config/erlang_socks5_travis.config ./config/erlang_socks5_test.config"
-    - "./rebar3 ct"
+  - "rm ./config/erlang_socks5_test.config"
+  - "mv ./config/erlang_socks5_travis.config ./config/erlang_socks5_test.config"
+  - "./rebar3 ct"
