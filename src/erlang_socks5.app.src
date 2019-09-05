@@ -2,7 +2,7 @@
  [{description, "SOCKS5 proxy server written on Erlang"},
   {vsn, "0.1.0"},
   {registered, []},
-  {mod, { erlang_socks5_app, []}},
+  {mod, {erlang_socks5_app, []}},
   {applications,
    [kernel,
     stdlib,
