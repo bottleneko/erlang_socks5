@@ -5,7 +5,8 @@
 %%% API
 -export([listen_port/0,
          listen_address/0,
-         clients_address/0
+         clients_address/0,
+         accounts/0
         ]).
 
 %%%===================================================================
@@ -25,6 +26,15 @@ listen_address() ->
 clients_address() ->
   {ok, OutInterfaceName} = application:get_env(proxy_out_interface),
   get_ipv4_address(OutInterfaceName).
+
+-spec accounts() -> Accounts when
+    Accounts :: [Account],
+    Account  :: {Username, Password},
+    Username :: binary(),
+    Password :: binary().
+accounts() ->
+  {ok, Accounts} = application:get_env(erlang_socks5, accounts),
+  Accounts.
 
 %%%===================================================================
 %%% Internal functions

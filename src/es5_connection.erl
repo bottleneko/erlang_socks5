@@ -177,7 +177,7 @@ wait_authentication(_EventType, {tcp, _Socket, TcpData}, Data) ->
     } = Data,
 
   {Username, Password} = es5_protocol:get_credentials(TcpData),
-  case es5_authorization_config:is_authorized(Username, Password) of
+  case es5_authentication_server:is_authenticated(Username, Password) of
     true ->
       Transport:send(Socket, es5_protocol:success_authentication()),
 

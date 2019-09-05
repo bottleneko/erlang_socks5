@@ -32,12 +32,12 @@ init([]) ->
   },
   ChildSpecs = [
     #{
-      id => es5_authorization_config,
-      start => {es5_authorization_config, start_link, []},
+      id => es5_authentication_server,
+      start => {es5_authentication_server, start_link, []},
       restart => transient,
       shutdown => 2000,
       type => worker,
-      module => [es5_authorization_config]
+      module => [es5_authentication_server]
     }
   ],
   {ok, {SupFlags, ChildSpecs}}.
