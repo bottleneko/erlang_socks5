@@ -268,16 +268,17 @@ forward(Transport, Socket, HostSocket, {tcp, HostSocket, TcpData}) ->
     State       :: connect_data_exchange.
 request_command_processing(connect, HostAddress, HostPort, Data) ->
   #es5_connection_data{
-     transport             = Transport,
-     socket                = Socket,
-     socket_port           = BoundPort,
-     in_interface_address  = InAddress
+     transport              = Transport,
+     socket                 = Socket,
+     socket_port            = BoundPort,
+     in_interface_address   = InAddress,
+     out_interface_address  = OutAddress
     } = Data,
 
   SocketOpts =
     [binary,
      {active, true},
-     {ifaddr, InAddress},
+     {ifaddr, OutAddress},
      {packet, raw}
     ],
   ConnectResult = gen_tcp:connect(HostAddress, HostPort, SocketOpts, 2000),

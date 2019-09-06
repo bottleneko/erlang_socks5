@@ -10,6 +10,6 @@ before_script:
   - "chmod +x bootstrap_travis.sh"
   - "./bootstrap_travis.sh"
 script:
-  - "rm ./config/erlang_socks5_test.config"
-  - "mv ./config/erlang_socks5_travis.config ./config/erlang_socks5_test.config"
+  - "rm config/test.sys.config"
+  - "mv config/travis.sys.config config/test.sys.config"
   - "./rebar3 ct"
