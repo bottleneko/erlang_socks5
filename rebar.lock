@@ -1,4 +1,8 @@
-[{<<"sqlite3">>,
+[{<<"ranch">>,
+  {git,"https://github.com/ninenines/ranch.git",
+       {ref,"087376c9142cf1bde2ae474ccad5768a12238bfd"}},
+  0},
+ {<<"sqlite3">>,
   {git,"https://github.com/alexeyr/erlang-sqlite3.git",
        {ref,"7cf50f858975f9d493fdef2202c706240531caa1"}},
   0}].

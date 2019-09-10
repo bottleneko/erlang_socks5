@@ -1,8 +1,20 @@
-# erlang_aaa [![Build Status](https://travis-ci.org/bottleneko/erlang_socks5.svg?branch=master)](https://travis-ci.org/bottleneko/erlang_aaa) [![Coverage Status](https://coveralls.io/repos/github/bottleneko/erlang_socks5/badge.svg?branch=master)](https://coveralls.io/github/bottleneko/erlang_socks5?branch=master) ![Erlang OTP Version](https://img.shields.io/badge/erlang%2Fotp-20.2-green.svg)
+# erlang_socks5 [![Build Status][build-status-svg]][build-status] [![Coverage Status][coverage-svg]][coverage] ![Erlang OTP Version][erlang-otp-version]
 Erlang SOCKS5 proxy implementation
 
-**Лицензия:** MIT
+**License:** MIT
 
-**Обратная связь:** bottleneko@gmail.com
+**Feedback:** bottleneko@gmail.com
 
-**Текущая версия:** 0.1.0
+**Last stable version:** 0.1.0
+
+## Running
+
+```sh
+docker run -p 1080:1080 -d --name erlang_socks5 bottleneko/erlang_socks5:latest
+```
+
+[build-status-svg]: https://travis-ci.org/bottleneko/erlang_socks5.svg?branch=master
+[build-status]: https://travis-ci.org/bottleneko/erlang_socks5
+[coverage-svg]: https://coveralls.io/repos/github/bottleneko/erlang_socks5/badge.svg?branch=master
+[coverage]: https://coveralls.io/github/bottleneko/erlang_socks5?branch=master
+[erlang-otp-version]: https://img.shields.io/badge/erlang%2Fotp-22.0-green.svg
